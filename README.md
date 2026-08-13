@@ -79,6 +79,40 @@ Add to your MCP client's config (e.g. `claude_desktop_config.json`):
 }
 ```
 
+## Remote deployment (Vercel, private API only, multi-tenant)
+
+`src/catapa_mcp/remote/` is a separate, Streamable-HTTP MCP server for deploying to Vercel so multiple people/orgs can connect without each running the server locally. It intentionally only exposes the `catapa_private_*` tools -- it does not port the public API's ~300 generated tools.
+
+Unlike the stdio server (one shared login, one local token cache), each connecting user authenticates with their **own** CATAPA account:
+
+1. The MCP client (Claude) starts an OAuth flow against this deployment.
+2. This deployment redirects the user's browser to CATAPA's real, hosted login page (there's no separate "private API OAuth" -- CATAPA only has OAuth on the public API side, so that's what's used; see `src/catapa_mcp/remote/oauth_provider.py`).
+3. Once CATAPA redirects back, the resulting CATAPA access/refresh token is sealed (encrypted, via `src/catapa_mcp/remote/crypto.py`) directly into the MCP token handed back to the client -- there is no per-user token table.
+4. Every subsequent tool call decrypts that request's own token to build a `CatapaPrivate` client scoped to that specific user (`src/catapa_mcp/remote/private_tools.py`), so different users' requests never share credentials.
+
+The only persistent storage needed is for OAuth client registrations and the few-seconds-lived login handshake (`src/catapa_mcp/remote/store.py`, backed by Upstash Redis via the Vercel Marketplace integration). Storage is behind the `TokenStore` abstract interface specifically so a future move to Postgres/MariaDB/etc. is a new subclass wired into `build_token_store()`, not a rewrite.
+
+### Deploying
+
+1. Attach an Upstash Redis store to the Vercel project (Marketplace tab) -- this sets `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` automatically.
+2. Set these environment variables in the Vercel project:
+
+   ```bash
+   MCP_SERVER_URL=https://your-app.vercel.app   # this deployment's own public URL
+   CATAPA_CLIENT_ID=...
+   CATAPA_CLIENT_SECRET=...
+   MCP_TOKEN_ENCRYPTION_KEY=...   # generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+   `MCP_TOKEN_ENCRYPTION_KEY` decrypts every connected user's CATAPA credentials -- treat it as a master secret, and don't rotate it casually (rotating logs everyone out). `CATAPA_BASE_URL`, `CATAPA_AUTHORIZATION_URL`, and `CATAPA_PRIVATE_BASE_URL` are optional overrides with the same defaults as the stdio server.
+
+3. Deploy. `api/index.py` exposes the ASGI app Vercel's Python runtime auto-detects; `vercel.json` routes all paths to it.
+4. Add the deployment as a remote MCP server in your client, pointed at `https://your-app.vercel.app/mcp`.
+
+**Caveats, since this hasn't been tested against real Vercel/Upstash/CATAPA infrastructure:**
+- `CATAPA_AUTHORIZATION_URL`'s default (`https://accounts.catapa.com/oauth2/authorize`) is an unverified guess mirroring CATAPA's dev-environment naming; override it if wrong.
+- Vercel's exact zero-config Python build behavior (whether it installs this project's own dependencies from `pyproject.toml` without an accompanying `requirements.txt`) hasn't been verified end-to-end here -- if the deploy fails to pick up dependencies, check [Vercel's Python runtime docs](https://vercel.com/docs/functions/runtimes/python) for the current convention.
+
 ## How the public API tools are generated
 
 The `catapa` SDK exposes a fluent resource tree (`client.core.employees.list(...)`) backed by an auto-generated OpenAPI client, where every operation method is fully typed -- including nested pydantic request/response models. `src/catapa_mcp/public_tools.py` walks that tree (`catapa.resource_registry.ROOT_RESOURCES`) at startup, and for every operation:

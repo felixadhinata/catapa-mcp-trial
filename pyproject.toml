@@ -10,6 +10,9 @@ dependencies = [
     "catapa>=0.3.6,<0.4.0",
     "catapa-private>=0.1.3,<0.2.0",
     "requests>=2.31.0,<3.0.0",
+    "cryptography>=42.0.0,<46.0.0",
+    "httpx>=0.27.0,<1.0.0",
+    "upstash-redis>=1.1.0,<2.0.0",
 ]
 
 [project.scripts]
