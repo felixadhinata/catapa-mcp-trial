@@ -106,12 +106,26 @@ The only persistent storage needed is for OAuth client registrations and the few
 
    `MCP_TOKEN_ENCRYPTION_KEY` decrypts every connected user's CATAPA credentials -- treat it as a master secret, and don't rotate it casually (rotating logs everyone out). `CATAPA_BASE_URL`, `CATAPA_AUTHORIZATION_URL`, and `CATAPA_PRIVATE_BASE_URL` are optional overrides with the same defaults as the stdio server.
 
-3. Deploy. `api/index.py` exposes the ASGI app Vercel's Python runtime auto-detects; `vercel.json` routes all paths to it.
-4. Add the deployment as a remote MCP server in your client, pointed at `https://your-app.vercel.app/mcp`.
+3. Deploy. `api/index.py` exposes the ASGI app Vercel's Python runtime auto-detects; `vercel.json` routes all paths to it; `.python-version` pins Python 3.12, since Vercel's Python runtime only supports 3.12+.
+4. Visit `https://your-app.vercel.app/` in a browser -- a status page confirms the deployment is actually up (version, the MCP endpoint URL, a link to the OAuth discovery document, and the list of exposed tools) before you try connecting a client to it.
 
 **Caveats, since this hasn't been tested against real Vercel/Upstash/CATAPA infrastructure:**
 - `CATAPA_AUTHORIZATION_URL`'s default (`https://accounts.catapa.com/oauth2/authorize`) is an unverified guess mirroring CATAPA's dev-environment naming; override it if wrong.
-- Vercel's exact zero-config Python build behavior (whether it installs this project's own dependencies from `pyproject.toml` without an accompanying `requirements.txt`) hasn't been verified end-to-end here -- if the deploy fails to pick up dependencies, check [Vercel's Python runtime docs](https://vercel.com/docs/functions/runtimes/python) for the current convention.
+- Vercel's exact zero-config Python build behavior hasn't been verified end-to-end here -- if the deploy fails to pick up dependencies or serves 404s on every route, check [Vercel's Python runtime docs](https://vercel.com/docs/functions/runtimes/python) and the deployment's Build Logs / Functions tab to confirm `api/index.py` was actually built into a function.
+
+### Connecting a client
+
+The deployment speaks standard MCP Streamable HTTP with OAuth 2.1 (dynamic client registration, authorization-code flow) at `https://your-app.vercel.app/mcp` -- any compliant MCP client can add it as a remote connector. Two concrete examples:
+
+**Claude (claude.ai web or Claude Desktop):** Settings -> Connectors -> Add custom connector -> paste `https://your-app.vercel.app/mcp` -> Connect. Claude discovers OAuth support automatically from `/.well-known/oauth-authorization-server` and opens a browser to CATAPA's login page.
+
+**Claude Code (CLI):**
+```bash
+claude mcp add --transport http catapa https://your-app.vercel.app/mcp
+```
+Authentication isn't triggered by `add` itself -- run `claude mcp list` (shows `! Needs authentication`), then inside a session run `/mcp`, select the server, and choose "Authenticate"; your browser opens for the CATAPA login, and status flips to `✔ Connected`. Add `--scope user` instead of the default `--scope local` to make it available across all your projects rather than just the current one.
+
+**ChatGPT:** requires a Plus/Pro/Business/Enterprise/Education account with **Developer Mode** enabled first (Settings -> Apps -> Advanced settings, or Settings -> Connectors -> Advanced -> Developer Mode, depending on account type -- the "Add custom connector" button only appears once this is on). Then Settings -> Connectors -> add a custom connector, paste the `/mcp` URL, and select **OAuth** as the authentication type; ChatGPT triggers the browser login on first use. (Verified via web search against OpenAI's help center rather than a direct fetch of their docs from this environment -- double-check against ChatGPT's own Settings UI if the menu names have since moved.)
 
 ## How the public API tools are generated
 
