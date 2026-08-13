@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 
 DEFAULT_BASE_URL = "https://api.catapa.com"
+DEFAULT_AUTHORIZATION_URL = "https://accounts.catapa.com/oauth2/authorize"
 
 
 def _split_csv(value: str | None) -> list[str] | None:
@@ -44,6 +45,12 @@ class Settings:
     Two independent credential sets are supported: one for the public, OAuth2-authenticated
     `catapa` SDK, and one for the session-authenticated `catapa-private` SDK. Either half can
     be left unconfigured; that half's tools are simply not registered.
+
+    A third mode, `oauth_enabled`, replaces both of the above with a single interactive OAuth2
+    authorization-code login (browser redirect via CATAPA's real OAuth server). CATAPA's private
+    API has no OAuth of its own, but its client accepts a static bearer token, so the one access
+    token obtained this way authenticates both the public and private clients -- see
+    `catapa_mcp.oauth`.
     """
 
     public_enabled: bool
@@ -59,6 +66,9 @@ class Settings:
     private_access_token: str | None
     private_username: str | None
     private_password: str | None
+
+    oauth_enabled: bool
+    authorization_url: str
 
     include: list[str] | None
     exclude: list[str] | None
@@ -86,17 +96,34 @@ class Settings:
             private_access_token=os.environ.get("CATAPA_PRIVATE_ACCESS_TOKEN"),
             private_username=os.environ.get("CATAPA_PRIVATE_USERNAME"),
             private_password=os.environ.get("CATAPA_PRIVATE_PASSWORD"),
+            oauth_enabled=os.environ.get("CATAPA_MCP_AUTH_MODE", "").strip().lower() == "oauth",
+            authorization_url=os.environ.get("CATAPA_AUTHORIZATION_URL", DEFAULT_AUTHORIZATION_URL),
             include=_split_csv(os.environ.get("CATAPA_MCP_INCLUDE")),
             exclude=_split_csv(os.environ.get("CATAPA_MCP_EXCLUDE")),
         )
+
+    def has_oauth_credentials(self) -> bool:
+        """Check whether enough configuration exists to run the interactive OAuth login.
+
+        Returns:
+            bool: True if OAuth mode is enabled and a client id/secret pair is set. CATAPA's OAuth
+                server only exists for the public API's client_id/client_secret; there is no
+                separate private-API OAuth client.
+        """
+        return self.oauth_enabled and bool(self.public_client_id and self.public_client_secret)
 
     def has_public_credentials(self) -> bool:
         """Check whether enough configuration exists to build the public client.
 
         Returns:
-            bool: True if a tenant is set and either an access token or a client id/secret pair is set.
+            bool: True if a tenant is set and either an access token or a client id/secret pair is set,
+                or if OAuth login is configured.
         """
-        if not self.public_enabled or not self.public_tenant:
+        if not self.public_enabled:
+            return False
+        if self.oauth_enabled:
+            return self.has_oauth_credentials()
+        if not self.public_tenant:
             return False
         if self.public_access_token:
             return True
@@ -106,9 +133,14 @@ class Settings:
         """Check whether enough configuration exists to build the private client.
 
         Returns:
-            bool: True if a tenant is set and either an access token or a username/password pair is set.
+            bool: True if a tenant is set and either an access token or a username/password pair is set,
+                or if OAuth login is configured (the OAuth access token also authenticates the private API).
         """
-        if not self.private_enabled or not self.private_tenant:
+        if not self.private_enabled:
+            return False
+        if self.oauth_enabled:
+            return self.has_oauth_credentials()
+        if not self.private_tenant:
             return False
         if self.private_access_token:
             return True

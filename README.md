@@ -9,6 +9,10 @@ An [MCP](https://modelcontextprotocol.io) server exposing [CATAPA](https://catap
 
 Each half is independent -- set up credentials for one, both, or neither (an unconfigured half is simply skipped, with a warning logged to stderr).
 
+### OAuth login (recommended)
+
+`catapa-private` has no OAuth of its own -- only a direct username/password login -- but its client also accepts a static bearer token, and CATAPA's *public* API already has a real, browser-redirect OAuth2 authorization-code flow. Setting `CATAPA_MCP_AUTH_MODE=oauth` uses that flow to authenticate **both** clients with a single login: the first time the server starts (or whenever the cached token can't be silently refreshed), it opens your browser to CATAPA's hosted login page, waits for the redirect on a local loopback server, exchanges the resulting code for an access/refresh token pair, and caches it to `~/.catapa-mcp/oauth-token.json` for future launches. See `src/catapa_mcp/oauth.py`.
+
 ## Install
 
 ```bash
@@ -23,6 +27,13 @@ Requires Python 3.11-3.13.
 Copy `.env.example` to `.env` and fill in credentials, or set the environment variables directly wherever the server runs (e.g. in your MCP client's config).
 
 ```bash
+# Recommended: a single interactive OAuth login for both APIs (opens your browser)
+CATAPA_MCP_AUTH_MODE=oauth
+CATAPA_CLIENT_ID=...
+CATAPA_CLIENT_SECRET=...
+
+# Or, per-API credentials:
+
 # Public API: either an access token, or OAuth2 client credentials
 CATAPA_TENANT=your-tenant
 CATAPA_ACCESS_TOKEN=...

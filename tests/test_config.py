@@ -108,6 +108,67 @@ def test_enable_flags_disable_credential_sets(monkeypatch):
     assert settings.has_public_credentials() is False
 
 
+def test_oauth_mode_requires_client_id_and_secret_but_not_tenant(monkeypatch):
+    """(Settings with CATAPA_MCP_AUTH_MODE=oauth)
+
+    Condition:
+        CATAPA_MCP_AUTH_MODE=oauth and a client id/secret are set, but no CATAPA_TENANT.
+
+    Expected:
+        Both has_public_credentials() and has_private_credentials() are True -- OAuth mode
+        discovers the tenant from the login callback, so it isn't required upfront.
+    """
+    monkeypatch.setenv("CATAPA_MCP_AUTH_MODE", "oauth")
+    monkeypatch.delenv("CATAPA_TENANT", raising=False)
+    monkeypatch.setenv("CATAPA_CLIENT_ID", "id-123")
+    monkeypatch.setenv("CATAPA_CLIENT_SECRET", "secret-123")
+    monkeypatch.delenv("CATAPA_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("CATAPA_PRIVATE_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("CATAPA_PRIVATE_USERNAME", raising=False)
+    monkeypatch.delenv("CATAPA_PRIVATE_PASSWORD", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.oauth_enabled is True
+    assert settings.has_public_credentials() is True
+    assert settings.has_private_credentials() is True
+
+
+def test_oauth_mode_without_client_credentials_is_unusable(monkeypatch):
+    """(Settings with CATAPA_MCP_AUTH_MODE=oauth but no client id/secret)
+
+    Condition:
+        CATAPA_MCP_AUTH_MODE=oauth is set, but CATAPA_CLIENT_ID/CATAPA_CLIENT_SECRET are not.
+
+    Expected:
+        Neither half is usable, since CATAPA's OAuth server has no separate private-API client.
+    """
+    monkeypatch.setenv("CATAPA_MCP_AUTH_MODE", "oauth")
+    monkeypatch.delenv("CATAPA_CLIENT_ID", raising=False)
+    monkeypatch.delenv("CATAPA_CLIENT_SECRET", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.has_public_credentials() is False
+    assert settings.has_private_credentials() is False
+
+
+def test_authorization_url_defaults_and_override(monkeypatch):
+    """(CATAPA_AUTHORIZATION_URL unset vs. set)
+
+    Condition:
+        First unset, then set to a custom value.
+
+    Expected:
+        Settings.authorization_url falls back to the documented default, then honors the override.
+    """
+    monkeypatch.delenv("CATAPA_AUTHORIZATION_URL", raising=False)
+    assert Settings.from_env().authorization_url == "https://accounts.catapa.com/oauth2/authorize"
+
+    monkeypatch.setenv("CATAPA_AUTHORIZATION_URL", "https://accounts-development.catapa.com/oauth2/authorize")
+    assert Settings.from_env().authorization_url == "https://accounts-development.catapa.com/oauth2/authorize"
+
+
 def test_include_exclude_parsing(monkeypatch):
     """(Settings with CATAPA_MCP_INCLUDE/EXCLUDE set)
 
