@@ -109,9 +109,10 @@ The only persistent storage needed is for OAuth client registrations and the few
 3. Deploy. `api/index.py` exposes the ASGI app Vercel's Python runtime auto-detects; `vercel.json` routes all paths to it; `.python-version` pins Python 3.12, since Vercel's Python runtime only supports 3.12+.
 4. Visit `https://your-app.vercel.app/` in a browser -- a status page confirms the deployment is actually up (version, the MCP endpoint URL, a link to the OAuth discovery document, and the list of exposed tools) before you try connecting a client to it.
 
-**Caveats, since this hasn't been tested against real Vercel/Upstash/CATAPA infrastructure:**
+**Vercel gotcha (confirmed, not hypothetical):** Vercel's zero-config Python detection bundles the whole project into a single function, but mounts it at the fixed path `/python` -- not at `/api/index` (the file-based path you'd expect from `api/index.py`). `vercel.json`'s `rewrites` destination must point at `/python`; pointing it at `/api/index` (a very natural first guess) silently 404s on every route, since the deployment still reports "Ready" -- there's no build error to notice. If a fresh deploy 404s everywhere, check the deployment's Resources tab for the actual Function `Path` column and match `rewrites` to it.
+
+**Other caveats, since this hasn't been fully tested against real CATAPA infrastructure:**
 - `CATAPA_AUTHORIZATION_URL`'s default (`https://accounts.catapa.com/oauth2/authorize`) is an unverified guess mirroring CATAPA's dev-environment naming; override it if wrong.
-- Vercel's exact zero-config Python build behavior hasn't been verified end-to-end here -- if the deploy fails to pick up dependencies or serves 404s on every route, check [Vercel's Python runtime docs](https://vercel.com/docs/functions/runtimes/python) and the deployment's Build Logs / Functions tab to confirm `api/index.py` was actually built into a function.
 
 ### Connecting a client
 
