@@ -18,6 +18,16 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from catapa_mcp.private_tools import JsonDict, _to_result
 
+PRIVATE_TOOL_NAMES = (
+    "catapa_private_get",
+    "catapa_private_post",
+    "catapa_private_put",
+    "catapa_private_patch",
+    "catapa_private_delete",
+    "catapa_private_get_all",
+    "catapa_private_session_status",
+)
+
 
 def _client_from_request(base_url: str) -> CatapaPrivate:
     """Build a `CatapaPrivate` client from the current request's authenticated CATAPA credentials.

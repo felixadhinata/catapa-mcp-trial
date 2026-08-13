@@ -15,12 +15,12 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import HTMLResponse, Response
 
 from catapa_mcp import __version__
 from catapa_mcp.config import DEFAULT_AUTHORIZATION_URL, DEFAULT_BASE_URL
 from catapa_mcp.remote.oauth_provider import SCOPE, CatapaOAuthProvider
-from catapa_mcp.remote.private_tools import register_private_tools
+from catapa_mcp.remote.private_tools import PRIVATE_TOOL_NAMES, register_private_tools
 from catapa_mcp.remote.store import build_token_store
 
 INSTRUCTIONS = (
@@ -87,4 +87,46 @@ def build_asgi_app() -> Starlette:
     async def catapa_callback(request: Request) -> Response:
         return await provider.handle_catapa_callback(request)
 
+    @server.custom_route("/", methods=["GET"])
+    async def home(request: Request) -> Response:
+        return HTMLResponse(_render_home_page(server_url=server_url, version=__version__))
+
     return server.streamable_http_app(stateless_http=True, json_response=True)
+
+
+def _render_home_page(*, server_url: str, version: str) -> str:
+    """Render a minimal landing page confirming the deployment is up and reachable.
+
+    Args:
+        server_url: This deployment's own public URL.
+        version: The `catapa-mcp` package version.
+
+    Returns:
+        str: The page's HTML.
+    """
+    tool_list = "".join(f"<li><code>{name}</code></li>" for name in PRIVATE_TOOL_NAMES)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>catapa-mcp-private</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; color: #1a1a1a; }}
+  code {{ background: #f0f0f0; padding: 0.1rem 0.35rem; border-radius: 3px; }}
+  .status {{ color: #1a7f37; font-weight: 600; }}
+  ul {{ line-height: 1.8; }}
+</style>
+</head>
+<body>
+<h1>catapa-mcp-private</h1>
+<p><span class="status">&#9679; Running</span> -- version {version}</p>
+<p>Multi-tenant MCP server for CATAPA's private HR/payroll API. Each connecting user authenticates
+with their own CATAPA account via OAuth -- this deployment never sees or stores a shared login.</p>
+<p><strong>MCP endpoint (Streamable HTTP):</strong> <code>{server_url}/mcp</code></p>
+<p><strong>OAuth discovery:</strong>
+  <a href="/.well-known/oauth-authorization-server">/.well-known/oauth-authorization-server</a></p>
+<p>Exposed tools:</p>
+<ul>{tool_list}</ul>
+</body>
+</html>
+"""

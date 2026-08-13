@@ -118,15 +118,7 @@ async def test_registers_seven_tools(server):
         Exactly the seven documented tools are registered, matching the stdio server's set.
     """
     tools = await server.list_tools()
-    assert {tool.name for tool in tools} == {
-        "catapa_private_get",
-        "catapa_private_post",
-        "catapa_private_put",
-        "catapa_private_patch",
-        "catapa_private_delete",
-        "catapa_private_get_all",
-        "catapa_private_session_status",
-    }
+    assert {tool.name for tool in tools} == set(private_tools.PRIVATE_TOOL_NAMES)
 
 
 async def test_tool_call_builds_client_from_the_requests_own_credentials(server):
